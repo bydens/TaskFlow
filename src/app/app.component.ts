@@ -1,19 +1,38 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { NgForOf, NgIf } from "@angular/common";
+
+import { CdkDragDrop, DragDropModule, transferArrayItem } from "@angular/cdk/drag-drop";
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
+import { MatCard } from "@angular/material/card";
+import { MatDialogModule } from '@angular/material/dialog';
+
 import { Task } from './task/task';
 import { TaskComponent } from "./task/task.component";
-import { MatCard } from "@angular/material/card";
-import { CdkDragDrop, DragDropModule, transferArrayItem } from "@angular/cdk/drag-drop";
-import { NgForOf, NgIf } from "@angular/common";
+import { TaskDialogComponent, TaskDialogResult } from './task-dialog/task-dialog.component';
 
 @Component({
   selector: 'app-root',
-  imports: [MatToolbarModule, MatIconModule, DragDropModule, MatCard, TaskComponent, NgIf, NgForOf],
+  imports: [
+    MatToolbarModule,
+    MatIconModule,
+    MatButtonModule,
+    MatDialogModule,
+    DragDropModule,
+    MatCard,
+    TaskComponent,
+    NgIf,
+    NgForOf
+  ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
 export class AppComponent {
+
+  private dialog = inject(MatDialog)
+
   todo: Task[] = [
     {
       title: 'Buy milk',
@@ -42,6 +61,23 @@ export class AppComponent {
       event.previousIndex,
       event.currentIndex
     );
+  }
+
+  newTask(): void {
+    const dialogRef = this.dialog.open(TaskDialogComponent, {
+      width: '270px',
+      data: {
+        task: {},
+      },
+    });
+    dialogRef
+      .afterClosed()
+      .subscribe((result: TaskDialogResult | undefined) => {
+        if (!result) {
+          return;
+        }
+        this.todo.push(result.task);
+      });
   }
 
 }
