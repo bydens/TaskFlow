@@ -5,12 +5,14 @@ import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
+import { MatIconModule } from '@angular/material/icon';
 
 import { Task } from '../task/task';
+import {NgIf} from "@angular/common";
 
 @Component({
   selector: 'app-task-dialog',
-  imports: [MatInputModule, FormsModule, MatButtonModule, MatDialogModule,],
+  imports: [MatInputModule, FormsModule, MatButtonModule, MatDialogModule, NgIf, MatIconModule],
   templateUrl: './task-dialog.component.html',
   styleUrl: './task-dialog.component.scss'
 })
