@@ -5,7 +5,7 @@ import { CdkDragDrop, DragDropModule, transferArrayItem } from "@angular/cdk/dra
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog } from '@angular/material/dialog';
+import {MatDialog, MatDialogRef} from '@angular/material/dialog';
 import { MatCard } from "@angular/material/card";
 import { MatDialogModule } from '@angular/material/dialog';
 
@@ -46,7 +46,27 @@ export class AppComponent {
   inProgress: Task[] = [];
   done: Task[] = [];
 
-  editTask(list: string, task: Task): void { }
+  editTask(list: 'done' | 'todo' | 'inProgress', task: Task): void {
+    const dialogRef: MatDialogRef<TaskDialogComponent, any> = this.dialog.open(TaskDialogComponent, {
+      width: '270px',
+      data: {
+        task,
+        enableDelete: true,
+      },
+    });
+    dialogRef.afterClosed().subscribe((result: TaskDialogResult|undefined) => {
+      if (!result) {
+        return;
+      }
+      const dataList: Task[] = this[list];
+      const taskIndex: number = dataList.indexOf(task);
+      if (result.delete) {
+        dataList.splice(taskIndex, 1);
+      } else {
+        dataList[taskIndex] = task;
+      }
+    });
+  }
 
   drop(event: CdkDragDrop<Task[] | any>): void {
     if (event.previousContainer === event.container) {
@@ -64,7 +84,7 @@ export class AppComponent {
   }
 
   newTask(): void {
-    const dialogRef = this.dialog.open(TaskDialogComponent, {
+    const dialogRef: MatDialogRef<TaskDialogComponent, any> = this.dialog.open(TaskDialogComponent, {
       width: '270px',
       data: {
         task: {},
