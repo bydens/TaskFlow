@@ -1,19 +1,40 @@
-import { Component, inject } from '@angular/core';
-import { AsyncPipe, NgForOf, NgIf } from "@angular/common";
-
-import { CdkDragDrop, DragDropModule, transferArrayItem } from "@angular/cdk/drag-drop";
+import { Component, inject, OnDestroy, signal, Signal } from '@angular/core'; // Импортируем signal и Signal
+import { NgForOf, NgIf } from "@angular/common"; // Убираем AsyncPipe
+import { CdkDragDrop, DragDropModule } from "@angular/cdk/drag-drop";
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { MatCard } from "@angular/material/card";
+import { MatDialog } from '@angular/material/dialog';
+import { MatCardModule } from "@angular/material/card"; // Используем MatCardModule
 import { MatDialogModule } from '@angular/material/dialog';
+import { toSignal } from '@angular/core/rxjs-interop'; // Импортируем toSignal
 
-import { Task } from './task/task';
+import { Task } from './task/task'; // Убедитесь, что интерфейс Task определен и включает id?
 import { TaskComponent } from "./task/task.component";
 import { TaskDialogComponent, TaskDialogResult } from './task-dialog/task-dialog.component';
-import { addDoc, collection, collectionData, CollectionReference, deleteDoc, doc, Firestore, updateDoc } from '@angular/fire/firestore';
-import { Observable } from 'rxjs';
+import {
+  addDoc,
+  collection,
+  collectionData,
+  CollectionReference,
+  deleteDoc,
+  doc,
+  DocumentReference, // Добавляем DocumentReference
+  Firestore,
+  query,
+  runTransaction, // Импортируем runTransaction для транзакций
+  UpdateData,
+  updateDoc
+} from '@angular/fire/firestore';
+import { Observable, Subscription } from 'rxjs';
+
+// Определяем тип для идентификаторов списков
+type TaskListId = 'todo' | 'inProgress' | 'done';
+
+// Константы для имен коллекций
+const TODO_COLLECTION = 'todo';
+const IN_PROGRESS_COLLECTION = 'inProgress';
+const DONE_COLLECTION = 'done';
 
 @Component({
   selector: 'app-root',
@@ -23,158 +44,144 @@ import { Observable } from 'rxjs';
     MatButtonModule,
     MatDialogModule,
     DragDropModule,
-    MatCard,
+    MatCardModule, // Импортируем MatCardModule
     TaskComponent,
     NgIf,
-    NgForOf, AsyncPipe
+    NgForOf,
   ],
   templateUrl: './app.component.html',
-  styleUrl: './app.component.scss'
+  styleUrls: ['./app.component.scss'] // Используем styleUrls
 })
-export class AppComponent {
-  private firestore = inject(Firestore);
-  private dialog = inject(MatDialog);
-  todo$: Observable<Task[]>;
-  inProgress$: Observable<Task[]>;
-  done$: Observable<Task[]>;
+export class AppComponent implements OnDestroy {
+  private firestore: Firestore = inject(Firestore);
+  private dialog: MatDialog = inject(MatDialog);
 
-  // Коллекции Firestore
-  todoCollection: CollectionReference;
-  inProgressCollection: CollectionReference;
-  doneCollection: CollectionReference;
+  // Используем Record для хранения ссылок на коллекции
+  private collectionRefs: Record<TaskListId, CollectionReference<Task>> = {
+    todo: collection(this.firestore, TODO_COLLECTION) as CollectionReference<Task>,
+    inProgress: collection(this.firestore, IN_PROGRESS_COLLECTION) as CollectionReference<Task>,
+    done: collection(this.firestore, DONE_COLLECTION) as CollectionReference<Task>
+  };
 
-  constructor() {
-    // Получаем ссылки на коллекции
-    this.todoCollection = collection(this.firestore, 'todo');
-    this.inProgressCollection = collection(this.firestore, 'inProgress');
-    this.doneCollection = collection(this.firestore, 'done');
+  // --- Используем Signals для хранения задач ---
+  tasks: Record<TaskListId, Signal<Task[]>> = {
+    todo: toSignal(this.getTasks(TODO_COLLECTION), { initialValue: [] }),
+    inProgress: toSignal(this.getTasks(IN_PROGRESS_COLLECTION), { initialValue: [] }),
+    done: toSignal(this.getTasks(DONE_COLLECTION), { initialValue: [] })
+  };
+  // ---------------------------------------------
 
-    // Получаем данные как Observable и добавляем поле 'id'
-    this.todo$ = collectionData(this.todoCollection, { idField: 'id' }) as Observable<Task[]>;
-    this.inProgress$ = collectionData(this.inProgressCollection, { idField: 'id' }) as Observable<Task[]>;
-    this.done$ = collectionData(this.doneCollection, { idField: 'id' }) as Observable<Task[]>;
+  private dialogSubscriptions: Subscription[] = [];
+
+  ngOnDestroy(): void {
+    this.dialogSubscriptions.forEach(sub => sub.unsubscribe());
   }
 
-  // todo: Task[] = [
-  //   {
-  //     title: 'Buy milk',
-  //     description: 'Go to the store and buy milk',
-  //   },
-  //   {
-  //     title: 'Create a Kanban app',
-  //     description: 'Using Firebase and Angular create a Kanban app!',
-  //   },
-  // ];
-  // inProgress: Task[] = [];
-  // done: Task[] = [];
-
-  editTask(list: 'done' | 'todo' | 'inProgress', task: Task & { id?: string }): void { // Добавляем id к типу Task
-    if (!task.id) {
-      console.error("Task ID is missing, cannot edit.");
-      return; // Не можем редактировать без ID
-    }
-
-    const dialogRef = this.dialog.open(TaskDialogComponent, {
-      width: '270px',
-      data: {
-        task: { ...task }, // Передаем копию задачи
-        enableDelete: true,
-      },
-    });
-
-    dialogRef.afterClosed().subscribe(async (result: TaskDialogResult | undefined) => { // делаем async
-      if (!result || !task.id) { // Убедимся еще раз, что ID есть
-        return;
-      }
-
-      // Получаем ссылку на конкретный документ в нужной коллекции
-      const docRef = doc(this.firestore, `${list}/${task.id}`);
-
-      try {
-        if (result.delete) {
-          // Удаляем документ
-          await deleteDoc(docRef);
-        } else if (result.task) {
-          // Обновляем документ
-          await updateDoc(docRef, { ...result.task }); // Обновляем данными из диалога
-        }
-      } catch (error) {
-        console.error("Error updating/deleting task: ", error);
-        // Обработка ошибок
-      }
-    });
+  private getTasks(collectionName: TaskListId): Observable<Task[]> {
+    const collRef = this.collectionRefs[collectionName];
+    // const q = query(collRef, orderBy('createdAt', 'asc')); // Пример с сортировкой
+    const q = query(collRef); // Без сортировки
+    return collectionData(q, { idField: 'id' }) as Observable<Task[]>;
   }
-
-  async drop(event: CdkDragDrop<Task[] | null>): Promise<void> {
-    if (event.previousContainer === event.container) return;
-    if (!event.container.data || !event.previousContainer.data) return;
-
-    // Получаем задачу, которую перетащили (она содержит 'id')
-    const task = event.item.data as Task & { id: string };
-
-    // Получаем ID контейнеров (которые мы задали в HTML: 'todo', 'inProgress', 'done')
-    const previousListId = event.previousContainer.id as 'todo' | 'inProgress' | 'done';
-    const currentListId = event.container.id as 'todo' | 'inProgress' | 'done';
-
-    if (!task.id) {
-      console.error("Task ID missing on drop");
-      return;
-    }
-
-    // Ссылка на документ в исходном списке
-    const sourceDocRef = doc(this.firestore, `${previousListId}/${task.id}`);
-
-    // Данные задачи для добавления в новый список (без id)
-    const taskData = {
-      title: task.title,
-      description: task.description
-    };
-
-    // Ссылка на целевую коллекцию
-    let targetCollection: CollectionReference;
-    if (currentListId === 'todo') targetCollection = this.todoCollection;
-    else if (currentListId === 'inProgress') targetCollection = this.inProgressCollection;
-    else if (currentListId === 'done') targetCollection = this.doneCollection;
-    else {
-      console.error("Invalid target container ID:", currentListId);
-      return;
-    }
-
-    try {
-      // 1. Добавляем задачу в новую коллекцию
-      await addDoc(targetCollection, taskData);
-      // 2. Удаляем задачу из старой коллекции *после* успешного добавления
-      await deleteDoc(sourceDocRef);
-    } catch (error) {
-      console.error("Error moving task between lists: ", error);
-      // В случае ошибки, данные могут быть рассинхронизированы.
-      // В реальном приложении здесь лучше использовать транзакции Firestore
-      // для атомарности операции (либо обе успешны, либо ни одна).
-    }
-  }
-
 
   newTask(): void {
     const dialogRef = this.dialog.open(TaskDialogComponent, {
       width: '270px',
       data: {
         task: {},
+        enableDelete: false
       },
     });
-    dialogRef
+
+    const sub = dialogRef
       .afterClosed()
-      .subscribe(async (result: TaskDialogResult | undefined) => { // делаем async
-        if (!result || !result.task || !result.task.title) { // Проверяем наличие задачи и заголовка
+      .subscribe(async (result: TaskDialogResult | undefined) => {
+        if (!result?.task?.title) {
           return;
         }
         try {
-          // Добавляем документ в коллекцию 'todo'
-          await addDoc(this.todoCollection, result.task);
+          const newTaskData = result.task;
+          await addDoc(this.collectionRefs.todo, newTaskData);
+          // Signal обновится автоматически
         } catch (error) {
-          console.error("Error adding task: ", error);
-          // Здесь можно добавить обработку ошибок, например, показать сообщение пользователю
+          console.error('Error adding new task:', error);
         }
       });
+    this.dialogSubscriptions.push(sub);
   }
 
+  editTask(list: TaskListId, task: Task): void {
+    if (!task.id) {
+      return;
+    }
+
+    const dialogRef = this.dialog.open(TaskDialogComponent, {
+      width: '270px',
+      data: {
+        task: { ...task },
+        enableDelete: true,
+      },
+    });
+
+    const sub = dialogRef
+      .afterClosed()
+      .subscribe(async (result: TaskDialogResult | undefined) => {
+        if (!result || !task.id) {
+          return;
+        }
+
+        const docRef = doc(this.firestore, `${list}/${task.id}`);
+
+        try {
+          if (result.delete) {
+            await deleteDoc(docRef);
+          } else if (result.task) {
+            const { id, ...taskDataToUpdate } = result.task;
+            await updateDoc(docRef, taskDataToUpdate as UpdateData<Task>);
+          }
+        } catch (error) {
+          console.error(`Error updating/deleting task ${task.id} in ${list}:`, error);
+        }
+      });
+    this.dialogSubscriptions.push(sub);
+  }
+
+
+  async drop(event: CdkDragDrop<Task[]>): Promise<void> {
+    if (event.previousContainer === event.container) {
+      return;
+    }
+
+    const task = event.item.data as Task;
+    if (!task?.id) {
+      return;
+    }
+
+    const previousListId = event.previousContainer.id as TaskListId;
+    const currentListId = event.container.id as TaskListId;
+
+    // Получаем ссылки на документ-источник и коллекцию-цель
+    const sourceDocRef: DocumentReference<Task> = doc(this.firestore, `${previousListId}/${task.id}`) as DocumentReference<Task>;
+    const targetCollectionRef = this.collectionRefs[currentListId];
+
+    if (!targetCollectionRef) {
+      return;
+    }
+
+    // Данные задачи для добавления (без id)
+    const { id, ...taskData } = task;
+
+    try {
+      // --- Выполняем операцию внутри транзакции ---
+      await runTransaction(this.firestore, async (transaction) => {
+        transaction.delete(sourceDocRef);
+
+        const newDocRef = doc(targetCollectionRef); // Генерируем ссылку для нового документа
+        transaction.set(newDocRef, taskData); // Добавляем данные
+      });
+
+    } catch (error) {
+      console.error('Error moving task between lists using transaction:', error);
+    }
+  }
 }
