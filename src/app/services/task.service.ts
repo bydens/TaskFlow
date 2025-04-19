@@ -16,9 +16,9 @@ import { Task } from '../task/task';
 
 // Константы для коллекций
 const COLLECTIONS = {
-  TODO: 'todo',
-  IN_PROGRESS: 'inProgress',
-  DONE: 'done'
+  todo: 'todo',
+  inProgress: 'inProgress',
+  done: 'done'
 } as const;
 
 export type TaskListId = keyof typeof COLLECTIONS;
@@ -30,9 +30,9 @@ export class TaskService {
   private readonly firestore: Firestore = inject(Firestore);
 
   private readonly collectionRefs: Record<TaskListId, CollectionReference<Task>> = {
-    TODO: collection(this.firestore, COLLECTIONS.TODO) as CollectionReference<Task>,
-    IN_PROGRESS: collection(this.firestore, COLLECTIONS.IN_PROGRESS) as CollectionReference<Task>,
-    DONE: collection(this.firestore, COLLECTIONS.DONE) as CollectionReference<Task>
+    todo: collection(this.firestore, COLLECTIONS.todo) as CollectionReference<Task>,
+    inProgress: collection(this.firestore, COLLECTIONS.inProgress) as CollectionReference<Task>,
+    done: collection(this.firestore, COLLECTIONS.done) as CollectionReference<Task>
   };
 
   /**
@@ -46,15 +46,10 @@ export class TaskService {
   }
 
   /**
-   * Создает новую задачу в списке TODO
+   * Создает новую задачу в списке todo
    */
   async createTask(task: Omit<Task, 'id'>): Promise<void> {
-    try {
-      await addDoc(this.collectionRefs.TODO, task);
-    } catch (error) {
-      console.error('Error creating task:', error);
-      throw error;
-    }
+    await addDoc(this.collectionRefs.todo, task);
   }
 
   /**

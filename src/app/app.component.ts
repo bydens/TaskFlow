@@ -12,22 +12,8 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { Task } from './task/task';
 import { TaskComponent } from "./task/task.component";
 import { TaskDialogComponent, TaskDialogResult } from './task-dialog/task-dialog.component';
-import {
-  addDoc,
-  collection,
-  collectionData,
-  CollectionReference,
-  deleteDoc,
-  doc,
-  DocumentReference,
-  Firestore,
-  query,
-  runTransaction,
-  UpdateData,
-  updateDoc
-} from '@angular/fire/firestore';
-import { Observable, Subscription } from 'rxjs';
 import { TaskService, TaskListId } from './services/task.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -51,9 +37,9 @@ export class AppComponent implements OnDestroy {
   private dialog: MatDialog = inject(MatDialog);
 
   tasks: Record<TaskListId, Signal<Task[]>> = {
-    TODO: toSignal(this.taskService.getTasks('TODO'), { initialValue: [] }),
-    IN_PROGRESS: toSignal(this.taskService.getTasks('IN_PROGRESS'), { initialValue: [] }),
-    DONE: toSignal(this.taskService.getTasks('DONE'), { initialValue: [] })
+    todo: toSignal(this.taskService.getTasks('todo'), { initialValue: [] }),
+    inProgress: toSignal(this.taskService.getTasks('inProgress'), { initialValue: [] }),
+    done: toSignal(this.taskService.getTasks('done'), { initialValue: [] })
   };
 
   private dialogSubscriptions: Subscription[] = [];
